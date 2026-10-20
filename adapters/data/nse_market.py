@@ -68,6 +68,15 @@ class NSEMarket:
         path.write_text(json.dumps(doc, indent=1), encoding="utf-8")
         return doc
 
+    # --- exchange state (what NSE itself says right now)
+    def market_state(self) -> dict:
+        """-> {state: 'Open'|'Closed'|..., message, trade_date, nifty, nifty_change_pct}. Capital-market segment."""
+        for m in self._json("/api/marketStatus").get("marketState", []):
+            if m.get("market") == "Capital Market":
+                return {"state": m.get("marketStatus"), "message": m.get("marketStatusMessage"), "trade_date": m.get("tradeDate"),
+                        "nifty": m.get("last"), "nifty_change_pct": m.get("percentChange")}
+        raise NSEError("Capital Market not present in /api/marketStatus")
+
     # --- deals
     def large_deals(self) -> dict:
         """Latest session's bulk, block and short deals: {as_on, bulk:[...], block:[...], short:[...]}."""

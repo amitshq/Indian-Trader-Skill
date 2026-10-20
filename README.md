@@ -2,7 +2,7 @@
 
 **Risk-gated research and paper-trading toolkit for Indian equities (NSE): Claude skills, a FastAPI backend and a Next.js dashboard, built on exchange filings instead of guesswork.**
 
-![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue) ![license](https://img.shields.io/badge/license-MIT-lightgrey) ![mode](https://img.shields.io/badge/default%20mode-PAPER-2d6a4f)
+![tests](https://img.shields.io/badge/tests-118%20passing-brightgreen) ![python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue) ![license](https://img.shields.io/badge/license-MIT-lightgrey) ![mode](https://img.shields.io/badge/default%20mode-PAPER-2d6a4f)
 [![CI](https://github.com/amitshq/Indian-Trader-Skill/actions/workflows/ci.yml/badge.svg)](https://github.com/amitshq/Indian-Trader-Skill/actions/workflows/ci.yml)
 
 ## About
@@ -31,12 +31,12 @@ flowchart LR
 Run on a clean virtualenv installed with `pip install -e ".[dev,data]"` (Python 3.13, Windows), all offline: no network, no broker, no real money.
 
 ```text
-106 passed in 4.58s
+118 passed in 5.54s
 ```
 
 | Test file | Tests | Covers |
 |---|---:|---|
-| `test_core.py` | 8 | INR formatting, IST market clock, holidays, Muhurat day, order validation, charges, alert rules |
+| `test_core.py` | 9 | INR formatting, IST market clock, holidays, Muhurat day, order validation, charges, alert rules, Yahoo price-reading regression |
 | `test_paper_api.py` | 4 | order queue, approval, risk-blocked orders, alerts |
 | `test_phase2.py` | 8 | fiscal quarters, growth/margins/TTM, derived Q4, screener rules and ranking |
 | `test_live_fundamentals.py` | 10 | Yahoo adapter, caching, stale cache, duplicate-row and overdue-results guards |
@@ -44,7 +44,8 @@ Run on a clean virtualenv installed with `pip install -e ".[dev,data]"` (Python 
 | `test_results_pdf.py` | 12 | strict PDF table reader (fails closed), manual entry validation and merge |
 | `test_phase3.py` | 9 | holidays, bulk/block deals, FII/DII, shareholding, insider rows, news tagging and de-duplication |
 | `test_phase4.py` | 30 | sizing, risk gate, one-order approval parser, lots, STCG/LTCG, rebalance, broker integration |
-| `test_api_planning.py` | 4 | sizing/rebalance/tax/market endpoints |
+| `test_api_planning.py` | 7 | sizing/rebalance/tax/market endpoints, order preview with every risk check, stock lookup, real-data screen, demo endpoint |
+| `test_demo.py` | 8 | the dummy-money rehearsal: closed/old prices, NSE-vs-calendar disagreement, no quotes, skipped screen, hold-and-reprice |
 | `test_upstox.py` | 9 | live gates, kill switch, caps, audit log (fake transport only) |
 
 What the tests do **not** prove: behaviour against the real Upstox API, the accuracy of the unofficial NSE/Yahoo data on any given day, or the correctness of tax and charge rates (they are unverified estimates).
@@ -66,11 +67,32 @@ CI (`.github/workflows/ci.yml`) runs the same suite on Python 3.11 and 3.13 plus
 | Rebalance | `skills/in-rebalance` | Drift table + sells-first proposals with a cost check |
 | Brokers | `adapters/broker/paper.py`, `adapters/broker/upstox.py` | Paper (default). Upstox live adapter: never run against the real API, disabled by default |
 
+## The UI (four screens)
+
+| Screen | What it is for |
+|---|---|
+| **Today** | Is the market open (our calendar vs what NSE itself says), your practice account, and a **Run the rehearsal** button that plays a whole trading day with dummy money and reports every step as OK / warning / failure |
+| **Research** | Look up a stock (price with its age, latest results with every data warning, promoter holding, news), screen by rules (sample or real data), FII/DII flows and big deals |
+| **Trade** | Build an order and see a live preview: the plain-English sentence, charges itemised, and *every* risk check ticked or crossed with its reason; approval queue; order history; budget sizing and rebalancing |
+| **Portfolio & tax** | Holdings, tax lots, capital-gains estimate, "what if I sell?" |
+
+Every screen explains its terms in "What does this mean?" panels and shows how old its data is.
+
+## Rehearse a trading day with dummy money
+
+```bash
+python scripts/demo_session.py                      # now, ₹1,00,000 of dummy money, 6 large caps
+python scripts/demo_session.py --hold-minutes 10    # buy, wait 10 minutes, re-price, sell half, show tax
+python scripts/demo_session.py --wait-for-open      # sleep until 09:20 IST on the next trading day
+```
+
+It reads NSE's own market state, takes real (delayed) prices and shows how old each one is, runs the screen, sizes and queues orders through the risk gate, **simulates your approval** (labelled everywhere), fills, re-prices, sells half to exercise tax lots, then reads deals, flows, promoter holding and news. The report is saved to `data/reports/`. With the market closed it says plainly that it is working at last-close prices. It never touches a broker or your own practice account.
+
 ## Quick start
 
 ```bash
 pip install -e ".[dev,data]"
-python -m pytest -q                       # 106 tests, all offline
+python -m pytest -q                       # 118 tests, all offline
 uvicorn api.main:app --reload             # http://localhost:8000/docs
 cd ui && npm install && npm run dev       # http://localhost:3000
 ```

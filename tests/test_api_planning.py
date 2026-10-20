@@ -77,3 +77,80 @@ def test_market_endpoints_and_upstream_failure():
     cal = c.get("/api/calendar").json()
     assert "2026-12-25" in cal["holidays"] and "2026-11-08" in cal["special_sessions"]
     assert cal["status"]["status"] in ("open", "pre_open", "closed", "holiday", "special_session")
+
+
+class FakeMarket2(FakeMarket):
+    class _C:
+        def announcements(self, *a):
+            return []
+    client = _C()
+
+    def market_state(self):
+        return {"state": "Closed", "message": "Normal Market has Closed", "trade_date": "19-Oct-2026 15:30", "nifty": 22888.95, "nifty_change_pct": -1.11}
+
+
+class DetailQuotes(StaticQuotes):
+    def detail(self, symbols):
+        return {s: {"price": p, "prev_close": p, "as_of": "2026-10-19T15:29:00+05:30"} for s, p in self.prices.items() if s in symbols}
+
+
+def test_preview_explains_every_check_and_saves_nothing():
+    q = DetailQuotes({"TCS": 4000.0, "ITC": 400.0})
+    c = TestClient(create_app(Store(":memory:", 1_000_000), q, market=FakeMarket2()))
+    ok = c.post("/api/orders/preview", json={"symbol": "itc", "side": "buy", "qty": 100}).json()
+    assert ok["valid"] and ok["price"] == 400.0 and ok["value"] == 40000.0 and ok["charges"]["total"] > 0
+    names = [x["name"] for x in ok["risk"]["checks"]]
+    assert ok["risk"]["verdict"] == "PASS" and "Position size limit" in names and "Cash buffer kept" in names
+    assert all(x["detail"] for x in ok["risk"]["checks"])                       # every check is explained in words
+    big = c.post("/api/orders/preview", json={"symbol": "TCS", "side": "BUY", "qty": 400}).json()
+    failed = [x for x in big["risk"]["checks"] if x["ok"] is False]
+    assert big["risk"]["verdict"] == "BLOCK" and failed and "exceeds max" in failed[0]["detail"]
+    bad = c.post("/api/orders/preview", json={"symbol": "ITC", "side": "BUY", "qty": 0}).json()
+    assert not bad["valid"] and bad["risk"] is None
+    assert c.get("/api/orders").json() == []                                    # previews never create orders
+    qs = c.get("/api/quotes", params={"symbols": "TCS,NOPE"}).json()
+    assert qs["prices"] == {"TCS": 4000.0} and qs["missing"] == ["NOPE"] and qs["detail"]["TCS"]["as_of"].startswith("2026-10-19")
+
+
+def test_demo_endpoint_runs_a_full_dummy_money_rehearsal():
+    q = DetailQuotes({"TCS": 4000.0, "ITC": 400.0, "INFY": 1500.0, "RELIANCE": 1400.0, "SBIN": 800.0, "ICICIBANK": 1300.0})
+    real = Store(":memory:", 1_000_000)
+    c = TestClient(create_app(real, q, market=FakeMarket2(), demo_quotes=q))
+    r = c.post("/api/demo/run", json={"capital": 100000, "symbols": ["TCS", "ITC", "INFY", "RELIANCE", "SBIN", "ICICIBANK"]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["report"]["counts"]["FAIL"] == 0 and "DUMMY money" in body["text"] and body["report"]["steps"][0]["name"] == "Exchange status"
+    assert real.positions() == [] and real.list_orders() == []                  # your own paper book is untouched
+    assert c.post("/api/demo/run", json={"capital": 5}).status_code == 422
+
+
+class FakeSource:
+    source = "NSE filings (XBRL) cross-checked with Yahoo"
+    errors = {}
+
+    def __init__(self, symbols):
+        self.symbols = symbols
+
+    def metrics(self):
+        return [{"ticker": s, "name": s, "roce": 20.0, "revenue_growth_yoy": 12.0, "results_overdue": 0,
+                 "data_warnings": None if s != "OLD" else "OUT OF DATE"} for s in self.symbols]
+
+
+def test_stock_lookup_and_real_screen_use_the_injected_sources():
+    seen = []
+
+    def factory(kind, symbols, client):
+        seen.append((kind, symbols))
+        return FakeSource(symbols)
+    q = DetailQuotes({"TCS": 4000.0, "OLD": 10.0})
+    c = TestClient(create_app(Store(":memory:"), q, market=FakeMarket2(), source_factory=factory))
+    s = c.get("/api/stock/tcs").json()
+    assert s["symbol"] == "TCS" and s["quote"]["price"] == 4000.0 and s["results"]["roce"] == 20.0
+    assert s["promoter"]["promoter_holding"] == 71.77 and seen[-1] == ("verified", ["TCS"])
+    spec = {"rules": [{"metric": "roce", "op": ">=", "value": 15}]}
+    r = c.post("/api/screen", json={"spec": spec, "source": "verified", "symbols": ["tcs", "old"]}).json()
+    assert sorted(p["ticker"] for p in r["passed"]) == ["OLD", "TCS"] and r["sample_data"] is False
+    assert r["data_warnings"] == {"OLD": "OUT OF DATE"} and seen[-1] == ("verified", ["TCS", "OLD"])
+    sample = c.post("/api/screen", json={"spec": spec, "source": "sample"}).json()
+    assert sample["sample_data"] is True and sample["source"].startswith("json:")
+    assert c.post("/api/screen", json={"spec": spec, "source": "verified", "symbols": [f"S{i}" for i in range(25)]}).status_code == 422

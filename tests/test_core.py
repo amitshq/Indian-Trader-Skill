@@ -66,3 +66,30 @@ def test_special_session_day_is_not_called_a_holiday():
 def test_real_nse_holiday_config_is_loaded():
     hs = calendar_in.load_holidays()
     assert date(2026, 1, 26) in hs and date(2026, 12, 25) in hs   # Republic Day, Christmas (NSE list)
+
+
+def test_yfinance_quotes_read_fast_info_attribute_and_key_names():
+    """Regression: fast_info.get('last_price') silently returned None, so live prices were always empty."""
+    import pandas as pd
+    from adapters.data.quotes import YFinanceQuotes
+
+    class Fast:
+        last_price = 2460.9                       # attribute style
+        def __getitem__(self, k):
+            return {"previousClose": 2465.0}[k]   # camelCase key style
+
+    class T:
+        fast_info = Fast()
+        def history(self, **kw):
+            return pd.DataFrame({"Close": [2459.0, 2461.5]}, index=pd.to_datetime(["2026-10-21 09:30", "2026-10-21 09:31"]).tz_localize("Asia/Kolkata"))
+
+    class Broken:
+        @property
+        def fast_info(self):
+            raise RuntimeError("delisted")
+
+    q = YFinanceQuotes(ticker_factory=lambda s: Broken() if s.startswith("BAD") else T())
+    d = q.detail(["TCS", "BAD"])
+    assert list(d) == ["TCS"] and d["TCS"]["price"] == 2460.9 and d["TCS"]["prev_close"] == 2465.0
+    assert d["TCS"]["as_of"].startswith("2026-10-21T09:31")
+    assert q.ltp(["TCS"]) == {"TCS": 2460.9}

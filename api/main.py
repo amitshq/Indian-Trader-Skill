@@ -77,12 +77,21 @@ def make_broker(store, quotes):
 
 class ScreenIn(BaseModel):
     spec: dict
+    source: str = "default"          # default (server setting) | sample | verified
+    symbols: Optional[list] = None   # for source=verified; default: first 6 of config/universe.json
 
 
-def create_app(store: Store = None, quotes=None, fundamentals=None, market=None) -> FastAPI:
+def real_source(kind: str, symbols: list, client=None):
+    """NSE filings cross-checked with Yahoo for these symbols (slow the first time, cached after)."""
+    from adapters.data.crosscheck import CrossCheckedFundamentals
+    from adapters.data.nse_results import NSEResults
+    return CrossCheckedFundamentals(NSEResults(symbols, client=client), YFinanceFundamentals(symbols))
+
+
+def create_app(store: Store = None, quotes=None, fundamentals=None, market=None, demo_quotes=None, source_factory=None) -> FastAPI:
     store = store or Store()
     fundamentals = fundamentals or default_fundamentals()
-    quotes = quotes or (YFinanceQuotes() if os.getenv("QUOTES") == "yfinance" else StaticQuotes())
+    quotes = quotes or (StaticQuotes() if os.getenv("QUOTES") == "static" else YFinanceQuotes())
     broker = make_broker(store, quotes)
     live = bool(getattr(broker, "live", False))
     mode_name = "LIVE" if live else "PAPER"
@@ -112,7 +121,11 @@ def create_app(store: Store = None, quotes=None, fundamentals=None, market=None)
     @app.get("/api/quotes")
     def get_quotes(symbols: str):
         syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-        return {"source": quotes.source, "prices": quotes.ltp(syms)}
+        if hasattr(quotes, "detail"):
+            d = quotes.detail(syms)
+            return {"source": quotes.source, "prices": {k: v["price"] for k, v in d.items()}, "detail": d,
+                    "missing": [s for s in syms if s not in d]}
+        return {"source": quotes.source, "prices": quotes.ltp(syms), "detail": {}, "missing": []}
 
     @app.get("/api/portfolio")
     def portfolio():
@@ -127,6 +140,39 @@ def create_app(store: Store = None, quotes=None, fundamentals=None, market=None)
                          "pnl": (ltp - p["avg_price"]) * p["qty"] if ltp else None})
         return {"mode": mode_name, "cash": broker.cash() if live else store.get_cash(), "holdings_value": value, "positions": rows}
 
+    @app.post("/api/orders/preview")
+    def preview_order(body: OrderIn):
+        """Everything the user should see BEFORE queueing: price, value, charges, and every risk check. Saves nothing."""
+        o = Order(symbol=body.symbol.upper(), side=body.side.upper(), qty=body.qty, exchange=body.exchange.upper(),
+                  order_type=body.order_type.upper(), price=body.price)
+        errs = o.validate()
+        d = quotes.detail([o.symbol]).get(o.symbol) if hasattr(quotes, "detail") else None
+        px = o.price if (o.order_type == "LIMIT" and o.price) else (d["price"] if d else quotes.ltp([o.symbol]).get(o.symbol))
+        out = {"mode": mode_name, "valid": not errs, "errors": errs, "price": px, "price_detail": d, "value": round(px * o.qty, 2) if px and o.qty else None,
+               "charges": charges.estimate(o.side, o.qty, px) if px and o.qty and o.qty > 0 else None, "risk": None}
+        if not errs:
+            v = broker.risk_verdict(o)
+            out["risk"] = {"verdict": v["verdict"], "reasons": v["reasons"], "warnings": v["warnings"], "checks": v["checks"], "fingerprint": v["fingerprint"]}
+        return out
+
+    class DemoIn(BaseModel):
+        capital: float = 100000.0
+        symbols: Optional[list] = None
+        hold_minutes: float = 0
+        include_screen: bool = False
+
+    @app.post("/api/demo/run")
+    def run_demo_ep(body: DemoIn):
+        """Full rehearsal with DUMMY money in a separate throw-away database (never touches your paper book or a broker)."""
+        from adapters import demo_runner
+        if live:
+            raise HTTPException(409, "the rehearsal is disabled while running in LIVE mode")
+        if not (1000 <= body.capital <= 10_000_000):
+            raise HTTPException(422, "dummy capital must be between 1,000 and 1,00,00,000")
+        res = demo_runner.run(capital=body.capital, symbols=body.symbols, hold_minutes=min(body.hold_minutes, 30),
+                              include_screen=body.include_screen, quotes=demo_quotes or (quotes if hasattr(quotes, "detail") else None), market=get_market())
+        return {"report": demo_runner.report_to_json(res["report"]), "text": res["text"], "file": res["file"]}
+
     @app.post("/api/orders")
     def submit_order(body: OrderIn):
         o = broker.submit(Order(symbol=body.symbol.upper(), side=body.side.upper(), qty=body.qty,
@@ -138,7 +184,7 @@ def create_app(store: Store = None, quotes=None, fundamentals=None, market=None)
             est = charges.estimate(o.side, o.qty, px)
         if o.status in ("PENDING", "BLOCKED"):
             v = broker.risk_verdict(o, exclude_id=o.id)
-            verdict = {"verdict": v["verdict"], "reasons": v["reasons"], "warnings": v["warnings"], "fingerprint": v["fingerprint"]}
+            verdict = {"verdict": v["verdict"], "reasons": v["reasons"], "warnings": v["warnings"], "checks": v["checks"], "fingerprint": v["fingerprint"]}
         return {"order": o.to_dict(), "estimated_charges": est, "risk": verdict, "mode": mode_name}
 
     @app.get("/api/orders")
@@ -249,16 +295,36 @@ def create_app(store: Store = None, quotes=None, fundamentals=None, market=None)
         name = "rules.live.example.json" if live else "rules.example.json"
         return json.loads((ROOT / "config" / name).read_text(encoding="utf-8"))
 
+    def _source_for(body):
+        if body.source == "sample":
+            return JsonFundamentals(SAMPLE)
+        if body.source == "verified":
+            syms = [str(x).upper() for x in (body.symbols or universe_symbols()[:6])]
+            if not 1 <= len(syms) <= 20:
+                raise HTTPException(422, "give between 1 and 20 symbols")
+            return (source_factory or real_source)("verified", syms, get_market().client)
+        return fundamentals
+
     @app.post("/api/screen")
     def run_screen(body: ScreenIn):
+        src = _source_for(body)
         try:
-            results = screener.screen(_metrics_with_prices(), body.spec)
+            if body.source == "verified":
+                rows = src.metrics()
+                if hasattr(quotes, "detail"):
+                    screener.add_prices(rows, quotes.ltp([r["ticker"] for r in rows]))
+            elif src is fundamentals:
+                rows = _metrics_with_prices()
+            else:
+                rows = src.metrics()
+            results = screener.screen(rows, body.spec)
         except screener.ScreenError as e:
             raise HTTPException(422, str(e))
         top = body.spec.get("top")
         passed = [r for r in results if r["passed"]]
-        return {"source": fundamentals.source, "sample_data": "sample" in fundamentals.source,
-                "errors": getattr(fundamentals, "errors", {}),
+        return {"source": src.source, "sample_data": "sample" in src.source,
+                "errors": getattr(src, "errors", {}),
+                "data_warnings": {r["ticker"]: r["metrics"].get("data_warnings") for r in results if r["metrics"].get("data_warnings")},
                 "passed": [{k: r[k] for k in ("ticker", "name", "score", "passes", "skipped")}
                            for r in (passed[:top] if top else passed)],
                 "failed": [{"ticker": r["ticker"], "name": r["name"], "fails": r["fails"]}
@@ -363,6 +429,28 @@ def create_app(store: Store = None, quotes=None, fundamentals=None, market=None)
         hs = sorted(calendar_in.load_holidays())
         return {"status": calendar_in.market_status(), "holidays": [h.isoformat() for h in hs],
                 "special_sessions": sorted(d.isoformat() for d in calendar_in.load_special_sessions())}
+
+    @app.get("/api/market/exchange")
+    def exchange_state():
+        """What NSE itself reports right now (open/closed, last NIFTY 50 level)."""
+        return _nse(lambda: get_market().market_state())
+
+    @app.get("/api/stock/{symbol}")
+    def stock(symbol: str):
+        """One stock: price (with age), latest results metrics (NSE filings vs Yahoo, with every warning) and promoter holding."""
+        sym = symbol.upper()
+        d = quotes.detail([sym]).get(sym) if hasattr(quotes, "detail") else None
+        out = {"symbol": sym, "quote": d, "results": None, "results_errors": {}, "promoter": None}
+        src = (source_factory or real_source)("verified", [sym], get_market().client)
+        rows = src.metrics()
+        out["results"] = rows[0] if rows else None
+        out["results_errors"] = getattr(src, "errors", {})
+        try:
+            from adapters.data.nse_market import promoter_signals
+            out["promoter"] = promoter_signals(get_market().shareholding(sym)) or None
+        except Exception as e:
+            out["results_errors"]["promoter"] = str(e)
+        return out
 
     @app.get("/api/deals")
     def deals(min_cr: float = 10.0):
