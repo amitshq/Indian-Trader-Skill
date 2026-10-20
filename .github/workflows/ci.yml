@@ -17,8 +17,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev,data]"
-      - name: Tests (offline: no network, no broker, no real money)
+      - name: "Tests (offline - no network, no broker, no real money)"
         run: python -m pytest -q
 
   frontend:
