@@ -1,0 +1,12 @@
+{
+  "_note": "UNVERIFIED ESTIMATES for equity delivery (CNC). Confirm against your broker's charge sheet and current exchange/SEBI rates before trusting P&L.",
+  "as_of": "2026-10-20",
+  "brokerage_per_order": 0.0,
+  "stt_pct_buy": 0.1,
+  "stt_pct_sell": 0.1,
+  "exchange_txn_pct": 0.00297,
+  "sebi_pct": 0.0001,
+  "stamp_duty_pct_buy": 0.015,
+  "gst_pct": 18.0,
+  "dp_charge_per_sell_scrip": 15.34
+}

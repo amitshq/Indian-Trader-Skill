@@ -1,0 +1,16 @@
+{
+  "name": "Quality growth (example)",
+  "rules": [
+    {"metric": "roce", "op": ">=", "value": 15},
+    {"metric": "debt_to_equity", "op": "<=", "value": 1},
+    {"metric": "promoter_pledge", "op": "<=", "value": 5},
+    {"metric": "revenue_growth_yoy", "op": ">=", "value": 8}
+  ],
+  "rank": [
+    {"metric": "profit_growth_yoy", "order": "desc", "weight": 3},
+    {"metric": "roce", "order": "desc", "weight": 1},
+    {"metric": "debt_to_equity", "order": "asc", "weight": 1}
+  ],
+  "missing": "fail",
+  "top": 10
+}

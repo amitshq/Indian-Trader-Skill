@@ -1,0 +1,30 @@
+{
+  "_note": "SYNTHETIC SAMPLE DATA for tests and demos. These companies do not exist. Amounts in INR crore.",
+  "companies": [
+    {"symbol": "ALPHAIND", "name": "Alpha Industries (sample)", "sector": "Industrials", "consolidated": true,
+     "quarters": [
+       {"period_end": "2024-12-31", "revenue": 1000, "operating_profit": 200, "net_profit": 120, "eps": 6.0},
+       {"period_end": "2025-03-31", "revenue": 1050, "operating_profit": 215, "net_profit": 130, "eps": 6.5},
+       {"period_end": "2025-06-30", "revenue": 1100, "operating_profit": 230, "net_profit": 140, "eps": 7.0},
+       {"period_end": "2025-09-30", "revenue": 1150, "operating_profit": 240, "net_profit": 150, "eps": 7.5},
+       {"period_end": "2025-12-31", "revenue": 1250, "operating_profit": 265, "net_profit": 165, "eps": 8.25}],
+     "annual": [],
+     "ratios": {"roce": 22.0, "roe": 18.0, "debt_to_equity": 0.3, "promoter_holding": 55.0, "promoter_pledge": 0.0}},
+    {"symbol": "BETAFIN", "name": "Beta Finance (sample)", "sector": "Financials", "consolidated": true,
+     "quarters": [
+       {"period_end": "2025-06-30", "revenue": 800, "net_profit": 90, "eps": 3.0},
+       {"period_end": "2025-09-30", "revenue": 820, "net_profit": 95, "eps": 3.2},
+       {"period_end": "2025-12-31", "revenue": 790, "net_profit": 70, "eps": 2.3}],
+     "annual": [{"fy": 2026, "revenue": 3200, "net_profit": 350, "eps": 11.7}],
+     "ratios": {"roe": 12.0, "debt_to_equity": 4.5, "promoter_holding": 40.0, "promoter_pledge": 22.0}},
+    {"symbol": "GAMMAFMCG", "name": "Gamma Consumer (sample)", "sector": "FMCG", "consolidated": true,
+     "quarters": [
+       {"period_end": "2024-12-31", "revenue": 500, "operating_profit": 100, "net_profit": 70, "eps": 14.0},
+       {"period_end": "2025-03-31", "revenue": 480, "operating_profit": 95, "net_profit": 66, "eps": 13.2},
+       {"period_end": "2025-06-30", "revenue": 510, "operating_profit": 104, "net_profit": 72, "eps": 14.4},
+       {"period_end": "2025-09-30", "revenue": 520, "operating_profit": 108, "net_profit": 75, "eps": 15.0},
+       {"period_end": "2025-12-31", "revenue": 550, "operating_profit": 115, "net_profit": 80, "eps": 16.0}],
+     "annual": [],
+     "ratios": {"roce": 35.0, "roe": 28.0, "debt_to_equity": 0.0, "promoter_holding": 62.0, "promoter_pledge": 0.0}}
+  ]
+}

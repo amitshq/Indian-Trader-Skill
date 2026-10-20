@@ -1,0 +1,16 @@
+[project]
+name = "india-trader"
+version = "0.1.0"
+description = "Personal NSE/BSE trading tools: shared core, paper broker, API and UI. Not investment advice."
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2"]
+
+[project.optional-dependencies]
+data = ["yfinance", "httpx"]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools]
+packages = ["core", "adapters", "adapters.broker", "adapters.data", "api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

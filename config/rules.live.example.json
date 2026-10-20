@@ -1,0 +1,16 @@
+{
+  "name": "Quality growth, live-data version (no promoter pledge: not available from Yahoo)",
+  "rules": [
+    {"metric": "results_overdue", "op": "==", "value": 0},
+    {"metric": "announced_newer_than_data", "op": "==", "value": 0},
+    {"metric": "roce", "op": ">=", "value": 15},
+    {"metric": "debt_to_equity", "op": "<=", "value": 1},
+    {"metric": "revenue_growth_yoy", "op": ">=", "value": 8}
+  ],
+  "rank": [
+    {"metric": "profit_growth_yoy", "order": "desc", "weight": 3},
+    {"metric": "roce", "order": "desc", "weight": 1}
+  ],
+  "missing": "fail",
+  "top": 10
+}

@@ -1,0 +1,7 @@
+{
+  "_note": "Live trading is OFF unless live_enabled is true AND the env var INDIA_TRADER_LIVE equals I_UNDERSTAND_THIS_USES_REAL_MONEY. Small caps on purpose: raise them only deliberately.",
+  "live_enabled": false,
+  "max_order_value": 10000,
+  "max_orders_per_day": 5,
+  "kill_switch_file": "data/KILL_SWITCH"
+}
