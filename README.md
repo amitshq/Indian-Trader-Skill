@@ -3,7 +3,7 @@
 **Risk-gated research and paper-trading toolkit for Indian equities (NSE): Claude skills, a FastAPI backend and a Next.js dashboard, built on exchange filings instead of guesswork.**
 
 ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue) ![license](https://img.shields.io/badge/license-MIT-lightgrey) ![mode](https://img.shields.io/badge/default%20mode-PAPER-2d6a4f)
-<!-- After pushing, add the CI badge: ![CI](https://github.com/YOUR-USER/india-trader/actions/workflows/ci.yml/badge.svg) -->
+[![CI](https://github.com/amitshq/Indian-Trader-Skill/actions/workflows/ci.yml/badge.svg)](https://github.com/amitshq/Indian-Trader-Skill/actions/workflows/ci.yml)
 
 ## About
 
